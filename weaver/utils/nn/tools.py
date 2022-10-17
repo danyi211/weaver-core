@@ -243,7 +243,7 @@ def evaluate_classification(model, test_loader, dev, epoch, for_training=True, l
         return total_correct / count, scores, labels, targets, observers
 
 ## evaluate a classifier for which classes are condensed into a single label_name --> argmax of numpy --> use ONNX instead of pytorch
-def evaluate_onnx_classification(model_path, test_loader, loss_func=None, eval_metrics=['roc_auc_score', 'roc_auc_score_matrix', 'confusion_matrix']):
+def evaluate_onnx_classification(model_path, test_loader, eval_metrics=['roc_auc_score', 'roc_auc_score_matrix', 'confusion_matrix']):
 
     import onnxruntime
     sess = onnxruntime.InferenceSession(model_path, providers=['CPUExecutionProvider'])
@@ -438,7 +438,7 @@ def evaluate_regression(model, test_loader, dev, epoch, for_training=True, loss_
                     for k, v in Z.items():
                         observers[k].append(v.cpu().numpy())
                         
-                loss = loss_func(preds, target).detach().item()
+                loss = 0 if loss_func is None else loss_func(preds, target).detach().item()
                 num_batches += 1
                 count += num_examples
                 total_loss += loss
@@ -505,7 +505,7 @@ def evaluate_regression(model, test_loader, dev, epoch, for_training=True, loss_
         return total_loss / num_batches, scores, labels, targets, observers
         
 ## evaluate regression via ONNX
-def evaluate_onnx_regression(model_path, test_loader, loss_func=None, 
+def evaluate_onnx_regression(model_path, test_loader,
                              eval_metrics=['mean_squared_error', 'mean_absolute_error', 'median_absolute_error',
                                            'mean_gamma_deviance']):
     import onnxruntime
@@ -911,7 +911,7 @@ def evaluate_classreg(model, test_loader, dev, epoch, for_training=True, loss_fu
             return total_loss / num_batches, scores_reg, labels, targets, observers;
 
 
-def evaluate_onnx_classreg(model_path, test_loader, loss_func=None,
+def evaluate_onnx_classreg(model_path, test_loader,
                            eval_cat_metrics=['roc_auc_score', 'roc_auc_score_matrix', 'confusion_matrix'],
                            eval_reg_metrics=['mean_squared_error', 'mean_absolute_error', 'median_absolute_error', 'mean_gamma_deviance']):
 
