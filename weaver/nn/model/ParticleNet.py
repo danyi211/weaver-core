@@ -205,8 +205,6 @@ class ParticleNet(nn.Module):
         if self.use_fusion:
             fts = self.fusion_block(torch.cat(outputs, dim=1)) * mask
 
-#         assert(((fts.abs().sum(dim=1, keepdim=True) != 0).float() - mask.float()).abs().sum().item() == 0)
-        
         if self.for_segmentation:
             x = fts
         else:
@@ -310,13 +308,13 @@ class ParticleNetLostTrkTagger(nn.Module):
                  lt_input_dropout=None,
                  for_inference=False,
                  **kwargs):
-        super(ParticleNetTagger, self).__init__(**kwargs)
+        super(ParticleNetLostTrkTagger, self).__init__(**kwargs)
         self.pf_input_dropout = nn.Dropout(pf_input_dropout) if pf_input_dropout else None
         self.sv_input_dropout = nn.Dropout(sv_input_dropout) if sv_input_dropout else None
         self.lt_input_dropout = nn.Dropout(lt_input_dropout) if lt_input_dropout else None
         self.pf_conv = FeatureConv(pf_features_dims, input_dims)
         self.sv_conv = FeatureConv(sv_features_dims, input_dims)
-        self.sv_conv = FeatureConv(lt_features_dims, input_dims)
+        self.lt_conv = FeatureConv(lt_features_dims, input_dims)
         self.pn = ParticleNet(input_dims=input_dims,
                               num_classes=num_classes,
                               num_targets=num_targets,
