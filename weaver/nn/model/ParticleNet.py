@@ -335,15 +335,11 @@ class ParticleNetLostTrkTagger(nn.Module):
             sv_points *= sv_mask
             sv_features *= sv_mask
         if self.lt_input_dropout:
-            lt_mask = (self.lt_input_dropout(sv_mask) != 0).float()
+            lt_mask = (self.lt_input_dropout(lt_mask) != 0).float()
             lt_points *= lt_mask
             lt_features *= lt_mask
 
-        print(pf_points.shape," ",sv_points.shape," ",lt_points.shape);
         points = torch.cat((pf_points, sv_points, lt_points), dim=2)
-        print(pf_mask.shape," ",sv_mask.shape," ",lt_mask.shape);
-        print(pf_features.shape," ",sv_features.shape," ",lt_features.shape);
-        print(self.pf_conv(pf_features * pf_mask).shape," ",self.sv_conv(sv_features * sv_mask).shape," ",self.lt_conv(lt_features*lt_mask).shape);
         features = torch.cat((self.pf_conv(pf_features * pf_mask) * pf_mask, self.sv_conv(sv_features * sv_mask) * sv_mask, self.lt_conv(lt_features*lt_mask)*lt_mask), dim=2)
         mask = torch.cat((pf_mask, sv_mask, lt_mask), dim=2)
         return self.pn(points, features, mask)
