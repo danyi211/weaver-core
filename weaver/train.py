@@ -21,15 +21,19 @@ parser.add_argument('--classreg-mode', action='store_true', default=False,
                     help='run a special task that is simultaneous regression + classification mode if this flag is set; otherwise run in classification mode')
 parser.add_argument('--preprocess-mode', action='store_true', default=False,
                     help='run only the pre-processing of the dataset to store the yaml weight file')
+parser.add_argument('--extra-selection', type=str, default=None,
+                    help='Additional selection requirement, will modify `selection` to `(selection) & (extra)` on-the-fly')
+parser.add_argument('--extra-test-selection', type=str, default=None,
+                    help='Additional test-time selection requirement, will modify `test_time_selection` to `(test_time_selection) & (extra)` on-the-fly')
 parser.add_argument('-c', '--data-config', type=str, default='data/ak15_points_pf_sv_v0.yaml',
                     help='data config YAML file')
 parser.add_argument('-i', '--data-train', nargs='*', default=[],
                     help='training files; supported syntax:'
-                         ' (a) plain list, `--data-train /path/to/a/* /path/to/b/*`;'
-                         ' (b) (named) groups [Recommended], `--data-train a:/path/to/a/* b:/path/to/b/*`,'
-                         ' the file splitting (for each dataloader worker) will be performed per group,'
-                         ' and then mixed together, to ensure a uniform mixing from all groups for each worker.'
-                    )
+                    ' (a) plain list, `--data-train /path/to/a/* /path/to/b/*`;'
+                    ' (b) (named) groups [Recommended], `--data-train a:/path/to/a/* b:/path/to/b/*`,'
+                    ' the file splitting (for each dataloader worker) will be performed per group,'
+                    ' and then mixed together, to ensure a uniform mixing from all groups for each worker.'
+                )
 parser.add_argument('-l', '--data-val', nargs='*', default=[],
                     help='validation files; when not set, will use training files and split by `--train-val-split`')
 parser.add_argument('-t', '--data-test', nargs='*', default=[],
@@ -64,7 +68,7 @@ parser.add_argument('--in-memory', action='store_true', default=False,
 parser.add_argument('--train-val-split', type=float, default=0.8,
                     help='training/validation split fraction')
 parser.add_argument('--no-remake-weights', action='store_true', default=False,
-                     help='do not remake weights for sampling (reweighting), use existing ones in the previous auto-generated data config YAML file')
+                    help='do not remake weights for sampling (reweighting), use existing ones in the previous auto-generated data config YAML file')
 parser.add_argument('--demo', action='store_true', default=False,
                     help='quickly test the setup by running over only a small number of events')
 parser.add_argument('--lr-finder', type=str, default=None,
@@ -74,7 +78,7 @@ parser.add_argument('--tensorboard', type=str, default=None,
 parser.add_argument('--tensorboard-custom-fn', type=str, default=None,
                     help='the path of the python script containing a user-specified function `get_tensorboard_custom_fn`, '
                          'to display custom information per mini-batch or per epoch, during the training, validation or test.')
-parser.add_argument('-n', '--network-config', type=str, default='networks/particle_net_pfcand_sv.py',
+parser.add_argument('-n', '--network-config', type=str,
                     help='network architecture configuration file; the path must be relative to the current dir')
 parser.add_argument('-o', '--network-option', nargs=2, action='append', default=[],
                     help='options to pass to the model class constructor, e.g., `--network-option use_counts False`')
@@ -161,6 +165,8 @@ parser.add_argument('--profile', action='store_true', default=False,
                     help='run the profiler')
 parser.add_argument('--backend', type=str, choices=['gloo', 'nccl', 'mpi'], default=None,
                     help='backend for distributed training')
+parser.add_argument('--cross-validation', type=str, default=None,
+                    help='enable k-fold cross validation; input format: `variable_name%k`')
 
 def to_filelist(args, mode='train'):
     if mode == 'train':
@@ -258,6 +264,8 @@ def train_load(args):
         raise RuntimeError('Must set --steps-per-epoch when using --in-memory!')
 
     train_data = SimpleIterDataset(train_file_dict, args.data_config, for_training=True,
+                                   extra_selection=args.extra_selection,
+                                   remake_weights=not args.no_remake_weights,
                                    load_range_and_fraction=(train_range, args.data_fraction),
                                    file_fraction=args.file_fraction,
                                    fetch_by_files=args.fetch_by_files_train,
@@ -270,10 +278,11 @@ def train_load(args):
                               num_workers=min(args.num_workers_train, int(len(train_files) * args.file_fraction)),
                               persistent_workers=args.num_workers_train > 0 and (args.steps_per_epoch is not None or args.persistent_workers),
                               worker_init_fn=set_worker_sharing_strategy
-    )
-
+                          )
+                    
     if args.data_val:
         val_data = SimpleIterDataset(val_file_dict, args.data_config, for_training=True,
+                                     extra_selection=args.extra_selection,
                                      load_range_and_fraction=(val_range, args.data_fraction),
                                      file_fraction=args.file_fraction,
                                      fetch_by_files=args.fetch_by_files_val,
@@ -290,6 +299,7 @@ def train_load(args):
 
     else:
         val_data = SimpleIterDataset(val_file_dict, args.data_config, for_training=True,
+                                     extra_selection=args.extra_selection,
                                      load_range_and_fraction=(val_range, args.data_fraction),
                                      file_fraction=args.file_fraction,
                                      fetch_by_files=args.fetch_by_files_train,
@@ -380,6 +390,7 @@ def test_load(args):
         _logger.info('Running on test file group %s with %d files:\n...%s', name, len(filelist), '\n...'.join(filelist))
         num_workers = min(args.num_workers_test, len(filelist))
         test_data = SimpleIterDataset({name: filelist}, args.data_config, for_training=False,
+                                      extra_selection=args.extra_test_selection,
                                       load_range_and_fraction=((0, 1), args.data_fraction),
                                       fetch_by_files=args.fetch_by_files_test, fetch_step=args.fetch_step_test,
                                       name='test_' + name)
@@ -396,16 +407,14 @@ def onnx(args):
     """
     Saving model as ONNX.
     :param args:
-    :param model:
-    :param data_config:
-    :param model_info:
     :return:
     """
     assert (args.export_onnx.endswith('.onnx'))
     model_path = args.model_prefix
     _logger.info('Exporting model %s to ONNX' % model_path)
 
-    from utils.dataset import DataConfig
+    from weaver.utils.dataset import DataConfig
+
     data_config = DataConfig.load(args.data_config, load_observers=False, load_reweight_info=False)
     model, model_info, _ = model_setup(args, data_config)
     model.load_state_dict(torch.load(model_path, map_location='cpu'))
@@ -759,6 +768,11 @@ def _main(args):
 
     _logger.info('args:\n - %s', '\n - '.join(str(it) for it in args.__dict__.items()))
 
+    # export to ONNX
+    if args.export_onnx:
+        onnx(args)
+        return
+
     if args.file_fraction < 1:
         _logger.warning('Use of `file-fraction` is not recommended in general -- prefer using `data-fraction` instead.')
 
@@ -829,7 +843,6 @@ def _main(args):
         profile(args, model, model_info, device=dev)
         sys.exit(0);
         
-
     # export to ONNX
     if args.export_onnx:
         onnx(args);
@@ -957,14 +970,16 @@ def _main(args):
 
             if args.predict_output and scores.ndim:
                 if '/' not in args.predict_output:
-                    args.predict_output = os.path.join(
+                    predict_output = os.path.join(
                         os.path.dirname(args.model_prefix),
                         'predict_output', args.predict_output)
-                os.makedirs(os.path.dirname(args.predict_output), exist_ok=True)
-                if name == '':
-                    output_path = args.predict_output
                 else:
-                    base, ext = os.path.splitext(args.predict_output)
+                    predict_output = args.predict_output
+                os.makedirs(os.path.dirname(predict_output), exist_ok=True)
+                if name == '':
+                    output_path = predict_output
+                else:
+                    base, ext = os.path.splitext(predict_output)
                     output_path = base + '_' + name + ext
                 if output_path.endswith('.root'):
                     save_root(args, output_path, data_config, scores, labels, targets, observers)
@@ -1017,7 +1032,18 @@ def main():
             stdout = None
     _configLogger('weaver', stdout=stdout, filename=args.log)
 
-    _main(args)
+    if args.cross_validation:
+        model_dir, model_fn = os.path.split(args.model_prefix)
+        var_name, kfold = args.cross_validation.split('%')
+        kfold = int(kfold)
+        for i in range(kfold):
+            _logger.info(f'\n=== Running cross validation, fold {i} of {kfold} ===')
+            args.model_prefix = os.path.join(f'{model_dir}_fold{i}', model_fn)
+            args.extra_selection = f'{var_name}%{kfold}!={i}'
+            args.extra_test_selection = f'{var_name}%{kfold}=={i}'
+            _main(args)
+    else:
+        _main(args)
 
 if __name__ == '__main__':
 
