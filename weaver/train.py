@@ -413,7 +413,7 @@ def onnx(args):
     model_path = args.model_prefix
     _logger.info('Exporting model %s to ONNX' % model_path)
 
-    from weaver.utils.dataset import DataConfig
+    from utils.dataset import DataConfig
 
     data_config = DataConfig.load(args.data_config, load_observers=False, load_reweight_info=False)
     model, model_info, _ = model_setup(args, data_config)
