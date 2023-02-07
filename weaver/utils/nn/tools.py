@@ -787,8 +787,8 @@ def evaluate_classreg(model, test_loader, dev, epoch, for_training=True, loss_fu
                 pred_reg        = model_output[:,len(data_config.label_value):len(data_config.label_value)+len(data_config.target_value)].squeeze().float();                
                 if pred_cat_output.shape[0] == num_examples and pred_reg.shape[0] == num_examples:
                     _, pred_cat = pred_cat_output.max(1);
-                    scores_cat.append(torch.softmax(model_output_cat,dim=1).cpu().numpy().astype(dtype=np.float32));
-                    scores_reg.append(model_output_reg.cpu().numpy().astype(dtype=np.float32))
+                    scores_cat.append(torch.softmax(pred_cat_output,dim=1).cpu().numpy().astype(dtype=np.float32));
+                    scores_reg.append(pred_reg.cpu().numpy().astype(dtype=np.float32))
                 else:
                     scores_cat.append(torch.zeros(num_examples,len(data_config.target_value)).cpu().numpy().astype(dtype=np.float32));                    
                     if len(data_config.target_value) > 1:
