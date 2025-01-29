@@ -896,6 +896,10 @@ def evaluate_classreg(model, test_loader, dev, epoch, for_training=True, loss_fu
             ['    - %s: \n%s' % (k, str(v)) for k, v in metric_reg_results.items()]))        
 
     torch.cuda.empty_cache()
+    # print loss
+    _logger.info('Eval Loss: %.5f'% (total_loss / num_batches))
+    _logger.info('Eval Loss Cat: %.5f'% (total_cat_loss / num_batches))
+    _logger.info('Eval Loss Reg: %.5f'% (total_reg_loss / num_batches))
     if for_training:
         gc.collect();
         return total_loss / num_batches;
