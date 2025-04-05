@@ -258,7 +258,10 @@ def train_load(args):
         _logger.info(train_files)
         _logger.info(val_files)
         args.data_fraction = 0.1
-        args.fetch_step = 0.002
+        # args.fetch_step = 0.002
+        args.fetch_step_train = 0.002
+        args.fetch_step_val = 0.002
+        args.fetch_step_test = 0.002
 
     if args.in_memory and (args.steps_per_epoch is None or args.steps_per_epoch_val is None):
         raise RuntimeError('Must set --steps-per-epoch when using --in-memory!')
